@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
+import { createCheckout } from "@/lib/polar";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
@@ -9,34 +9,21 @@ export async function POST(req: Request) {
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Please sign in first" }, { status: 401 });
     }
+
     const { quantity } = await req.json();
     const qty = Math.max(1, parseInt(quantity) || 1);
 
-    const checkoutSession = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Bible Drop",
-              description: `Send ${qty} Bible(s) to random US households`,
-            },
-            unit_amount: 1500,
-          },
-          quantity: qty,
-        },
-      ],
-      mode: "payment",
-      success_url: `${process.env.NEXTAUTH_URL}/donate/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXTAUTH_URL}/donate`,
+    const checkout = await createCheckout({
+      productPriceId: process.env.POLAR_PRODUCT_PRICE_ID!,
+      successUrl: `${process.env.NEXTAUTH_URL}/donate/success?checkout_id={CHECKOUT_ID}`,
+      customerEmail: session.user.email,
       metadata: {
         userId: (session.user as any).id,
         quantity: qty.toString(),
       },
     });
 
-    return NextResponse.json({ url: checkoutSession.url });
+    return NextResponse.json({ url: checkout.url });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
