@@ -31,22 +31,23 @@ model Address {
 }
 
 model Donation {
-  id              String      @id @default(cuid())
-  userId          String
-  amount          Int
-  quantity        Int
-  stripeSessionId String?
-  status          String      @default("pending")
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  user            User        @relation(fields: [userId], references: [id])
-  bibleDrops      BibleDrop[]
+  id               String      @id @default(cuid())
+  userId           String
+  amount           Int
+  quantity         Int
+  polarCheckoutId  String?     @unique
+  status           String      @default("pending")
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  user             User        @relation(fields: [userId], references: [id])
+  bibleDrops       BibleDrop[]
 }
 
 model BibleDrop {
   id             String    @id @default(cuid())
   donationId     String
   addressId      String
+  lobLetterId    String?   @unique
   trackingNumber String?
   status         String    @default("pending")
   shippedAt      DateTime?
