@@ -31,6 +31,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       },
     });
 
+    // Send fulfillment notification to donor
+    if (updated.donation.user.email) {
+      await sendFulfillmentEmail(
+        updated.donation.user.email,
+        updated.donation.user.name || "Friend",
+        updated.address
+      );
+    }
+
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
