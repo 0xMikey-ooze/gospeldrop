@@ -1,16 +1,37 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Please sign in first" }, { status: 401 });
+    const { donorName, donorEmail, bibleCount } = await req.json();
+
+    if (!donorName || !donorEmail || !bibleCount) {
+      return NextResponse.json(
+        { error: "donorName, donorEmail, and bibleCount are required" },
+        { status: 400 }
+      );
     }
-    const { quantity } = await req.json();
-    const qty = Math.max(1, parseInt(quantity) || 1);
+
+    const count = parseInt(bibleCount);
+    if (!count || count < 1) {
+      return NextResponse.json(
+        { error: "bibleCount must be at least 1" },
+        { status: 400 }
+      );
+    }
+
+    const amount = count * 2500;
+
+    const order = await prisma.order.create({
+      data: {
+        donorName,
+        donorEmail,
+        bibleCount: count,
+        amount,
+        status: "pending",
+      },
+    });
 
     const checkoutSession = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -20,20 +41,27 @@ export async function POST(req: Request) {
             currency: "usd",
             product_data: {
               name: "Bible Drop",
-              description: `Send ${qty} Bible(s) to random US households`,
+              description: `Send ${count} Bible(s) to random US households`,
             },
-            unit_amount: 1500,
+            unit_amount: 2500,
           },
-          quantity: qty,
+          quantity: count,
         },
       ],
       mode: "payment",
-      success_url: `${process.env.NEXTAUTH_URL}/donate/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXTAUTH_URL}/donate`,
+      customer_email: donorEmail,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/donate/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/donate`,
       metadata: {
-        userId: (session.user as any).id,
-        quantity: qty.toString(),
+        orderId: order.id,
+        donorName,
+        bibleCount: count.toString(),
       },
+    });
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { stripeSessionId: checkoutSession.id },
     });
 
     return NextResponse.json({ url: checkoutSession.url });
