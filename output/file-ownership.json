@@ -1,0 +1,65 @@
+{
+  "team-1": {
+    "description": "Admin Frontend (Pages + Components)",
+    "owns": [
+      "src/app/admin/layout.tsx",
+      "src/app/admin/page.tsx",
+      "src/app/admin/shipments/page.tsx",
+      "src/app/admin/donors/page.tsx",
+      "src/app/admin/queue/page.tsx",
+      "src/components/admin/AdminSidebar.tsx",
+      "src/components/admin/StatsCard.tsx",
+      "src/components/admin/StatusBadge.tsx",
+      "src/components/admin/ShipmentsTable.tsx",
+      "src/components/admin/DonorsTable.tsx",
+      "src/components/admin/QueueList.tsx"
+    ],
+    "reads": [
+      "src/components/Navbar.tsx",
+      "tailwind.config.ts",
+      "src/app/globals.css",
+      "src/app/dashboard/page.tsx",
+      "src/app/track/page.tsx"
+    ]
+  },
+  "team-2": {
+    "description": "Backend (Schema, API Routes, Email Service)",
+    "owns": [
+      "prisma/schema.prisma",
+      "src/lib/admin.ts",
+      "src/lib/email.ts",
+      "src/app/api/admin/stats/route.ts",
+      "src/app/api/admin/shipments/route.ts",
+      "src/app/api/admin/donors/route.ts",
+      "src/app/api/admin/queue/route.ts",
+      "src/app/api/admin/queue/bulk/route.ts"
+    ],
+    "reads": [
+      "src/lib/prisma.ts",
+      "src/lib/auth.ts",
+      "src/app/api/donations/route.ts"
+    ]
+  },
+  "team-3": {
+    "description": "Test Architect (TDD Tests)",
+    "owns": [
+      "vitest.config.ts",
+      "__tests__/setup.ts",
+      "__tests__/lib/admin.test.ts",
+      "__tests__/lib/email.test.ts",
+      "__tests__/api/admin-stats.test.ts",
+      "__tests__/api/admin-shipments.test.ts",
+      "__tests__/api/admin-donors.test.ts",
+      "__tests__/api/admin-queue.test.ts",
+      "__tests__/components/StatsCard.test.tsx",
+      "__tests__/components/StatusBadge.test.tsx",
+      "__tests__/components/AdminSidebar.test.tsx",
+      "__tests__/components/ShipmentsTable.test.tsx",
+      "__tests__/components/DonorsTable.test.tsx",
+      "__tests__/components/QueueList.test.tsx"
+    ],
+    "modifies": [
+      "package.json"
+    ]
+  }
+}
