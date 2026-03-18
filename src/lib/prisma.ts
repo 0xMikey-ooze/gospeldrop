@@ -1,7 +1,16 @@
 import { PrismaClient } from "@prisma/client";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+declare global {
+  // eslint-disable-next-line no-var
+  var prismaInstance: PrismaClient | undefined;
+}
 
-export const prisma = globalForPrisma.prisma || new PrismaClient();
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    if (!global.prismaInstance) {
+      global.prismaInstance = new PrismaClient();
+    }
+    const val = (global.prismaInstance as any)[prop];
+    return typeof val === "function" ? val.bind(global.prismaInstance) : val;
+  },
+});
