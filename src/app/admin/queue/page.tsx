@@ -1,115 +1,142 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+
+import { useEffect, useState, useCallback } from "react";
 
 interface QueueItem {
   id: string;
   status: string;
+  trackingNumber: string | null;
   createdAt: string;
-  address: { name: string; line1: string; line2?: string | null; city: string; state: string; zip: string };
-  donation: { user: { email: string; name: string | null } };
+  address: {
+    name: string;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    state: string;
+    zip: string;
+  };
+  donation: {
+    user: { email: string; name: string | null };
+  };
 }
 
 export default function QueuePage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [fulfilling, setFulfilling] = useState<string | null>(null);
-  const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
+  const [processing, setProcessing] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (status === "unauthenticated") router.push("/auth/signin");
-  }, [status, router]);
-
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchQueue();
-    }
-  }, [status]);
-
-  const fetchQueue = () => {
+  const fetchQueue = useCallback(() => {
     setLoading(true);
     fetch("/api/admin/queue")
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setQueue(data); })
+      .then((d) => { setQueue(d.queue || []); setTotal(d.total || 0); })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchQueue(); }, [fetchQueue]);
+
+  const handleAction = async (id: string, action: "fulfill" | "skip" | "cancel") => {
+    setProcessing(id);
+    let trackingNumber: string | undefined;
+    if (action === "fulfill") {
+      const tn = window.prompt("Enter tracking number (optional):");
+      trackingNumber = tn || undefined;
+    }
+    await fetch(`/api/admin/queue/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, trackingNumber }),
+    });
+    setProcessing(null);
+    fetchQueue();
   };
 
-  const handleFulfill = async (id: string) => {
-    setFulfilling(id);
-    try {
-      const res = await fetch(`/api/admin/queue/${id}/fulfill`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackingNumber: trackingInputs[id] || null }),
-      });
-      if (res.ok) {
-        setQueue((prev) => prev.filter((item) => item.id !== id));
-      }
-    } finally {
-      setFulfilling(null);
-    }
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Remove this item from the queue? This cannot be undone.")) return;
+    setProcessing(id);
+    await fetch(`/api/admin/queue/${id}`, { method: "DELETE" });
+    setProcessing(null);
+    fetchQueue();
   };
+
+  const fmt = (d: string) => new Date(d).toLocaleDateString();
 
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-2">
-        <h1 className="text-3xl font-[800]">Bible Request Queue</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-[800]">Bible Request Queue</h1>
+          <p className="text-text-sub font-semibold mt-1">{total} pending requests</p>
+        </div>
         <button
           onClick={fetchQueue}
-          className="text-sm text-primary font-semibold hover:underline"
+          className="bg-accent-lavender text-primary font-bold px-4 py-2 rounded-full text-sm hover:bg-primary hover:text-white transition-all"
         >
           Refresh
         </button>
       </div>
-      <p className="text-text-sub font-semibold mb-8">
-        {queue.length} item{queue.length !== 1 ? "s" : ""} pending processing
-      </p>
 
       {loading ? (
-        <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-24 bg-gray-200 rounded-xl" />)}
-        </div>
+        <div className="text-text-sub font-semibold">Loading queue...</div>
       ) : queue.length === 0 ? (
-        <div className="bg-white rounded-card p-16 text-center shadow-soft">
-          <p className="text-xl font-[800] text-text-main">Queue is empty!</p>
-          <p className="text-text-sub mt-2">All Bible requests have been processed.</p>
+        <div className="bg-green-50 border border-green-100 rounded-2xl p-12 text-center">
+          <p className="text-3xl mb-3">🎉</p>
+          <p className="font-[800] text-lg text-green-800">Queue is empty!</p>
+          <p className="text-text-sub font-semibold mt-1">All Bible requests have been fulfilled.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {queue.map((item) => (
-            <div key={item.id} className="bg-white rounded-card shadow-soft p-6 flex items-center gap-6">
+            <div
+              key={item.id}
+              className="bg-white rounded-2xl shadow-soft p-6 flex items-start justify-between gap-6"
+            >
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${item.status === "processing" ? "bg-blue-100 text-blue-800" : "bg-yellow-100 text-yellow-800"}`}>
-                    {item.status}
-                  </span>
-                  <span className="text-xs text-text-sub">
-                    Requested {new Date(item.createdAt).toLocaleDateString()}
-                  </span>
+                  <span className="text-lg">📖</span>
+                  <div>
+                    <p className="font-bold text-text-main">{item.address.name}</p>
+                    <p className="text-text-sub text-sm">
+                      {item.address.line1}{item.address.line2 ? `, ${item.address.line2}` : ""},{" "}
+                      {item.address.city}, {item.address.state} {item.address.zip}
+                    </p>
+                  </div>
                 </div>
-                <p className="font-[800]">{item.address.name}</p>
-                <p className="text-text-sub text-sm">
-                  {item.address.line1}{item.address.line2 ? ", " + item.address.line2 : ""}, {item.address.city}, {item.address.state} {item.address.zip}
-                </p>
-                <p className="text-xs text-text-sub mt-1">Donor: {item.donation.user.name || item.donation.user.email}</p>
+                <div className="text-xs text-text-sub mt-2">
+                  <span className="font-semibold">Requested by:</span> {item.donation.user.email}
+                </div>
+                <div className="text-xs text-text-sub">
+                  <span className="font-semibold">Added:</span> {fmt(item.createdAt)}
+                </div>
+                {item.trackingNumber && (
+                  <div className="text-xs text-text-sub mt-1">
+                    <span className="font-semibold">Tracking:</span>{" "}
+                    <span className="font-mono">{item.trackingNumber}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex flex-col gap-2">
-                <input
-                  type="text"
-                  placeholder="Tracking number (optional)"
-                  value={trackingInputs[item.id] || ""}
-                  onChange={(e) => setTrackingInputs((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                  className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-primary w-52"
-                />
+              <div className="flex flex-col gap-2 shrink-0">
                 <button
-                  onClick={() => handleFulfill(item.id)}
-                  disabled={fulfilling === item.id}
-                  className="bg-primary text-white py-2 px-4 rounded-full font-bold text-sm hover:bg-primary-hover transition-all disabled:opacity-50"
+                  disabled={processing === item.id}
+                  onClick={() => handleAction(item.id, "fulfill")}
+                  className="bg-primary text-white font-bold px-5 py-2 rounded-full text-sm hover:bg-primary-hover transition-all disabled:opacity-50"
                 >
-                  {fulfilling === item.id ? "Processing..." : "Mark as Shipped"}
+                  Fulfill
+                </button>
+                <button
+                  disabled={processing === item.id}
+                  onClick={() => handleAction(item.id, "cancel")}
+                  className="bg-red-50 text-red-600 font-bold px-5 py-2 rounded-full text-sm hover:bg-red-100 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={processing === item.id}
+                  onClick={() => handleDelete(item.id)}
+                  className="bg-gray-50 text-text-sub font-bold px-5 py-2 rounded-full text-sm hover:bg-gray-100 transition-all disabled:opacity-50"
+                >
+                  Delete
                 </button>
               </div>
             </div>

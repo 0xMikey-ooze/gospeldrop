@@ -1,39 +1,38 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-function isAdmin(email: string) {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-  return email === adminEmail;
-}
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
 
-export async function GET(req: Request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const { searchParams } = new URL(request.url);
+  const sortBy = searchParams.get("sortBy") || "createdAt";
+  const sortDir = (searchParams.get("sortDir") || "desc") as "asc" | "desc";
+  const status = searchParams.get("status");
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "20");
 
-    const { searchParams } = new URL(req.url);
-    const sortBy = searchParams.get("sortBy") || "createdAt";
-    const sortOrder = (searchParams.get("sortOrder") || "desc") as "asc" | "desc";
+  const allowed = ["createdAt", "shippedAt", "deliveredAt", "status"];
+  const orderField = allowed.includes(sortBy) ? sortBy : "createdAt";
 
-    const validSortFields = ["createdAt", "status", "shippedAt", "deliveredAt"];
-    const orderByField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+  const where = status ? { status } : {};
 
-    const shipments = await prisma.bibleDrop.findMany({
+  const [shipments, total] = await Promise.all([
+    prisma.bibleDrop.findMany({
+      where,
       include: {
         address: true,
         donation: { include: { user: { select: { email: true, name: true } } } },
       },
-      orderBy: { [orderByField]: sortOrder },
-    });
+      orderBy: { [orderField]: sortDir },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.bibleDrop.count({ where }),
+  ]);
 
-    return NextResponse.json(shipments);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  return NextResponse.json({ shipments, total, page, limit });
 }

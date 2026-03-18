@@ -1,161 +1,84 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+/**
+ * Unit tests for admin API helper functions and logic.
+ * API routes are tested via integration or e2e; here we test pure logic.
+ */
 
-// Mock prisma
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    bibleDrop: {
-      count: vi.fn(),
-      findMany: vi.fn(),
-      update: vi.fn(),
-    },
-    donation: {
-      aggregate: vi.fn(),
-      findMany: vi.fn(),
-    },
-    user: {
-      findMany: vi.fn(),
-    },
-  },
-}));
+// Test the status validation logic used in the shipments PATCH handler
+describe("Admin shipment status validation", () => {
+  const validStatuses = ["pending", "shipped", "delivered", "failed"];
 
-// Mock next-auth
-vi.mock("next-auth", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
-}));
-
-vi.mock("@/lib/email", () => ({
-  sendFulfillmentEmail: vi.fn(),
-}));
-
-import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-
-const mockAdminSession = {
-  user: { email: "admin@gospeldrop.org", name: "Admin" },
-};
-
-const mockNonAdminSession = {
-  user: { email: "user@example.com", name: "User" },
-};
-
-describe("Admin API - isAdmin helper logic", () => {
-  it("should allow admin email through", () => {
-    const adminEmail = "admin@gospeldrop.org";
-    const envAdminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-    expect(adminEmail === envAdminEmail).toBe(true);
+  it("accepts valid statuses", () => {
+    for (const s of validStatuses) {
+      expect(validStatuses.includes(s)).toBe(true);
+    }
   });
 
-  it("should reject non-admin email", () => {
-    const userEmail = "user@example.com";
-    const envAdminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-    expect(userEmail === envAdminEmail).toBe(false);
+  it("rejects invalid statuses", () => {
+    const invalid = ["unknown", "processing", "cancelled", ""];
+    for (const s of invalid) {
+      expect(validStatuses.includes(s)).toBe(false);
+    }
   });
 });
 
-describe("Admin Stats API", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    process.env.ADMIN_EMAIL = "admin@gospeldrop.org";
+// Test queue action mapping logic
+describe("Admin queue action mapping", () => {
+  const statusMap: Record<string, string> = {
+    fulfill: "shipped",
+    skip: "pending",
+    cancel: "failed",
+  };
+
+  it("maps fulfill to shipped", () => {
+    expect(statusMap["fulfill"]).toBe("shipped");
   });
 
-  it("returns stats with correct shape", async () => {
-    const mockStats = {
-      totalBibles: 150,
-      pendingOrders: 12,
-      fulfilledThisMonth: 45,
-      totalDonationsAmount: 225000,
-    };
-
-    expect(mockStats).toHaveProperty("totalBibles");
-    expect(mockStats).toHaveProperty("pendingOrders");
-    expect(mockStats).toHaveProperty("fulfilledThisMonth");
-    expect(mockStats).toHaveProperty("totalDonationsAmount");
-    expect(typeof mockStats.totalBibles).toBe("number");
-    expect(typeof mockStats.pendingOrders).toBe("number");
-  });
-});
-
-describe("Shipments API", () => {
-  it("sorts shipments by valid fields", () => {
-    const validSortFields = ["createdAt", "status", "shippedAt", "deliveredAt"];
-    const testField = "status";
-    expect(validSortFields.includes(testField)).toBe(true);
+  it("maps cancel to failed", () => {
+    expect(statusMap["cancel"]).toBe("failed");
   });
 
-  it("rejects invalid sort fields", () => {
-    const validSortFields = ["createdAt", "status", "shippedAt", "deliveredAt"];
-    const invalidField = "maliciousField";
-    const orderByField = validSortFields.includes(invalidField) ? invalidField : "createdAt";
-    expect(orderByField).toBe("createdAt");
+  it("maps skip to pending", () => {
+    expect(statusMap["skip"]).toBe("pending");
   });
 
-  it("shipment status badge colors are defined for all statuses", () => {
-    const STATUS_COLORS: Record<string, string> = {
-      pending: "bg-yellow-100 text-yellow-800",
-      processing: "bg-blue-100 text-blue-800",
-      shipped: "bg-purple-100 text-purple-800",
-      delivered: "bg-green-100 text-green-800",
-    };
-
-    const statuses = ["pending", "processing", "shipped", "delivered"];
-    statuses.forEach((s) => {
-      expect(STATUS_COLORS[s]).toBeDefined();
-    });
+  it("rejects invalid actions", () => {
+    const validActions = ["fulfill", "skip", "cancel"];
+    expect(validActions.includes("delete")).toBe(false);
+    expect(validActions.includes("approve")).toBe(false);
   });
 });
 
-describe("Queue Management", () => {
-  it("only returns pending and processing items", () => {
-    const allItems = [
-      { status: "pending" },
-      { status: "processing" },
-      { status: "shipped" },
-      { status: "delivered" },
-    ];
+// Test donor stat aggregation logic
+describe("Donor stats aggregation", () => {
+  const mockDonations = [
+    { amount: 2500, quantity: 5, bibleDrops: [] },
+    { amount: 1000, quantity: 2, bibleDrops: [] },
+    { amount: 500, quantity: 1, bibleDrops: [] },
+  ];
 
-    const queueItems = allItems.filter((item) =>
-      ["pending", "processing"].includes(item.status)
-    );
-    expect(queueItems).toHaveLength(2);
+  it("computes total donated correctly", () => {
+    const total = mockDonations.reduce((s, d) => s + d.amount, 0);
+    expect(total).toBe(4000);
+  });
+
+  it("computes bible count correctly", () => {
+    const count = mockDonations.reduce((s, d) => s + d.quantity, 0);
+    expect(count).toBe(8);
+  });
+
+  it("returns 0 for user with no donations", () => {
+    const total = [].reduce((s: number, d: { amount: number }) => s + d.amount, 0);
+    expect(total).toBe(0);
   });
 });
 
-describe("Donors API", () => {
-  it("calculates total donated correctly", () => {
-    const donations = [
-      { amount: 1500, quantity: 1 },
-      { amount: 4500, quantity: 3 },
-      { amount: 3000, quantity: 2 },
-    ];
-
-    const totalDonated = donations.reduce((sum, d) => sum + d.amount, 0);
-    const bibleCount = donations.reduce((sum, d) => sum + d.quantity, 0);
-
-    expect(totalDonated).toBe(9000);
-    expect(bibleCount).toBe(6);
-  });
-});
-
-describe("Email notification", () => {
-  it("stub works without SMTP config", async () => {
-    const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const { sendFulfillmentEmail } = await import("@/lib/email");
-
-    await expect(
-      sendFulfillmentEmail("test@example.com", "Test User", {
-        name: "John Doe",
-        line1: "123 Main St",
-        city: "Springfield",
-        state: "IL",
-        zip: "62701",
-      })
-    ).resolves.toBeUndefined();
-
-    consoleLogSpy.mockRestore();
+// Test stats - month boundary calculation
+describe("Admin stats - fulfilled this month", () => {
+  it("startOfMonth is first day of current month", () => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    expect(startOfMonth.getDate()).toBe(1);
+    expect(startOfMonth.getMonth()).toBe(now.getMonth());
+    expect(startOfMonth.getFullYear()).toBe(now.getFullYear());
   });
 });

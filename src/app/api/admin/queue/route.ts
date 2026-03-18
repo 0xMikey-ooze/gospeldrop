@@ -1,33 +1,30 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-function isAdmin(email: string) {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-  return email === adminEmail;
-}
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
 
-export async function GET() {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "20");
 
-    const queue = await prisma.bibleDrop.findMany({
-      where: { status: { in: ["pending", "processing"] } },
+  const [items, total] = await Promise.all([
+    prisma.bibleDrop.findMany({
+      where: { status: "pending" },
       include: {
         address: true,
         donation: { include: { user: { select: { email: true, name: true } } } },
       },
       orderBy: { createdAt: "asc" },
-    });
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.bibleDrop.count({ where: { status: "pending" } }),
+  ]);
 
-    return NextResponse.json(queue);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  return NextResponse.json({ queue: items, total, page, limit });
 }

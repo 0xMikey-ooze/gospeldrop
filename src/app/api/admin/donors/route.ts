@@ -1,23 +1,19 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-function isAdmin(email: string) {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-  return email === adminEmail;
-}
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
 
-export async function GET() {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "20");
 
-    const donors = await prisma.user.findMany({
+  const [donors, total] = await Promise.all([
+    prisma.user.findMany({
       include: {
         donations: {
           include: { bibleDrops: true },
@@ -25,20 +21,33 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: "desc" },
-    });
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.user.count(),
+  ]);
 
-    const donorsWithStats = donors.map((donor) => ({
-      id: donor.id,
-      email: donor.email,
-      name: donor.name,
-      createdAt: donor.createdAt,
-      totalDonated: donor.donations.reduce((sum, d) => sum + d.amount, 0),
-      bibleCount: donor.donations.reduce((sum, d) => sum + d.quantity, 0),
-      donations: donor.donations,
-    }));
+  const enriched = donors.map((user) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    createdAt: user.createdAt,
+    totalDonated: user.donations.reduce((s, d) => s + d.amount, 0),
+    bibleCount: user.donations.reduce((s, d) => s + d.quantity, 0),
+    donationHistory: user.donations.map((d) => ({
+      id: d.id,
+      amount: d.amount,
+      quantity: d.quantity,
+      status: d.status,
+      createdAt: d.createdAt,
+      bibleDrops: d.bibleDrops.map((b) => ({
+        id: b.id,
+        status: b.status,
+        trackingNumber: b.trackingNumber,
+      })),
+    })),
+  }));
 
-    return NextResponse.json(donorsWithStats);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  return NextResponse.json({ donors: enriched, total, page, limit });
 }

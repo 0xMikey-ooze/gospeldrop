@@ -1,48 +1,36 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 
-interface Stats {
-  totalBibles: number;
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+interface AdminStats {
+  totalBiblesSent: number;
   pendingOrders: number;
   fulfilledThisMonth: number;
-  totalDonationsAmount: number;
+  totalDonors: number;
+  totalDonated: number;
 }
 
-export default function AdminPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [error, setError] = useState("");
+export default function AdminOverviewPage() {
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/auth/signin");
-      return;
-    }
-    if (status === "authenticated") {
-      fetch("/api/admin/stats")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.error) setError(data.error);
-          else setStats(data);
-        })
-        .catch(() => setError("Failed to load stats"));
-    }
-  }, [status, router]);
+    fetch("/api/admin/stats")
+      .then((r) => {
+        if (!r.ok) throw new Error(r.status === 403 ? "Admin access required" : "Failed to load");
+        return r.json();
+      })
+      .then(setStats)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
-  if (status === "loading" || !stats) {
+  if (loading) {
     return (
       <div className="p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-48" />
-          <div className="grid grid-cols-4 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-card" />
-            ))}
-          </div>
-        </div>
+        <div className="text-text-sub font-semibold">Loading stats...</div>
       </div>
     );
   }
@@ -50,45 +38,95 @@ export default function AdminPage() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-600">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700 font-semibold">
           {error}
         </div>
       </div>
     );
   }
 
-  const statCards = [
-    { label: "Total Bibles Sent", value: stats.totalBibles, color: "bg-accent-lavender", textColor: "text-primary", icon: "Book" },
-    { label: "Pending Orders", value: stats.pendingOrders, color: "bg-[#FFF4E0]", textColor: "text-[#FF9F1C]", icon: "Clock" },
-    { label: "Fulfilled This Month", value: stats.fulfilledThisMonth, color: "bg-[#E6FFF2]", textColor: "text-[#00C48C]", icon: "Check" },
-    { label: "Total Donated", value: `$${(stats.totalDonationsAmount / 100).toLocaleString()}`, color: "bg-[#FFE8F0]", textColor: "text-[#FF5D8F]", icon: "Dollar" },
+  const cards = [
+    {
+      label: "Total Bibles Sent",
+      value: stats?.totalBiblesSent ?? 0,
+      bg: "bg-accent-lavender",
+      color: "text-primary",
+      icon: "📖",
+      href: "/admin/shipments",
+    },
+    {
+      label: "Pending Orders",
+      value: stats?.pendingOrders ?? 0,
+      bg: "bg-[#FFF4E0]",
+      color: "text-[#FF9F1C]",
+      icon: "⏳",
+      href: "/admin/queue",
+    },
+    {
+      label: "Fulfilled This Month",
+      value: stats?.fulfilledThisMonth ?? 0,
+      bg: "bg-[#E6FFF2]",
+      color: "text-[#00C48C]",
+      icon: "✅",
+      href: "/admin/shipments?status=delivered",
+    },
+    {
+      label: "Total Donors",
+      value: stats?.totalDonors ?? 0,
+      bg: "bg-[#FFF0F5]",
+      color: "text-[#E91E8C]",
+      icon: "🤝",
+      href: "/admin/donors",
+    },
+    {
+      label: "Total Donated",
+      value: `$${((stats?.totalDonated ?? 0) / 100).toFixed(2)}`,
+      bg: "bg-[#F0F9FF]",
+      color: "text-[#0284C7]",
+      icon: "💰",
+      href: "/admin/donors",
+    },
   ];
 
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-[800] mb-2 text-text-main">Dashboard Overview</h1>
-      <p className="text-text-sub font-semibold mb-8">Real-time stats for GospelDrop</p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-[800] text-text-main">Dashboard Overview</h1>
+        <p className="text-text-sub font-semibold mt-1">All GospelDrop stats at a glance</p>
+      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        {statCards.map((card) => (
-          <div key={card.label} className={`${card.color} rounded-card p-6`}>
-            <div className="text-3xl mb-3">{card.icon}</div>
-            <p className={`text-3xl font-[800] ${card.textColor}`}>{card.value}</p>
-            <p className="text-text-sub font-bold mt-2 text-sm">{card.label}</p>
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        {cards.map((card) => (
+          <Link
+            key={card.label}
+            href={card.href}
+            className={`${card.bg} rounded-2xl p-6 flex items-center gap-4 hover:shadow-soft transition-all group`}
+          >
+            <span className="text-3xl">{card.icon}</span>
+            <div>
+              <p className={`text-3xl font-[800] ${card.color}`}>{card.value}</p>
+              <p className="text-text-sub font-bold text-sm mt-1">{card.label}</p>
+            </div>
+          </Link>
         ))}
       </div>
 
-      <div className="bg-white rounded-card p-6 shadow-soft">
-        <h2 className="text-xl font-[800] mb-4">Quick Actions</h2>
-        <div className="flex gap-4">
-          <a href="/admin/queue" className="bg-primary text-white py-3 px-6 rounded-full font-bold text-sm hover:bg-primary-hover transition-all">
-            Process Queue
-          </a>
-          <a href="/admin/shipments" className="bg-accent-lavender text-primary py-3 px-6 rounded-full font-bold text-sm hover:bg-primary hover:text-white transition-all">
-            View Shipments
-          </a>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link href="/admin/queue" className="bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-soft transition-all">
+          <h3 className="font-[800] text-lg mb-1">Bible Queue</h3>
+          <p className="text-text-sub text-sm">Manage pending Bible requests and fulfill orders</p>
+          <span className="text-primary font-bold text-sm mt-3 block">Go to Queue →</span>
+        </Link>
+        <Link href="/admin/shipments" className="bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-soft transition-all">
+          <h3 className="font-[800] text-lg mb-1">Shipment Tracking</h3>
+          <p className="text-text-sub text-sm">Track all Bible drops with status and tracking numbers</p>
+          <span className="text-primary font-bold text-sm mt-3 block">View Shipments →</span>
+        </Link>
+        <Link href="/admin/donors" className="bg-white border border-gray-100 rounded-2xl p-6 hover:shadow-soft transition-all">
+          <h3 className="font-[800] text-lg mb-1">Donor Management</h3>
+          <p className="text-text-sub text-sm">View donor history, total given, and Bibles sponsored</p>
+          <span className="text-primary font-bold text-sm mt-3 block">View Donors →</span>
+        </Link>
       </div>
     </div>
   );

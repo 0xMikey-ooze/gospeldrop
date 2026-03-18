@@ -13,18 +13,21 @@ export async function PATCH(
   if (auth.error) return auth.error;
 
   const body = await request.json();
-  const { status, trackingNumber } = body;
+  const { action, trackingNumber } = body;
 
-  const validStatuses = ["pending", "shipped", "delivered", "failed"];
-  if (status && !validStatuses.includes(status)) {
-    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  if (!["fulfill", "skip", "cancel"].includes(action)) {
+    return NextResponse.json({ error: "Invalid action. Use fulfill, skip, or cancel." }, { status: 400 });
   }
 
-  const updateData: Record<string, unknown> = {};
-  if (status) updateData.status = status;
-  if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
-  if (status === "shipped") updateData.shippedAt = new Date();
-  if (status === "delivered") updateData.deliveredAt = new Date();
+  const statusMap: Record<string, string> = {
+    fulfill: "shipped",
+    skip: "pending",
+    cancel: "failed",
+  };
+
+  const updateData: Record<string, unknown> = { status: statusMap[action] };
+  if (trackingNumber) updateData.trackingNumber = trackingNumber;
+  if (action === "fulfill") updateData.shippedAt = new Date();
 
   const drop = await prisma.bibleDrop.update({
     where: { id: params.id },
@@ -34,8 +37,7 @@ export async function PATCH(
     },
   });
 
-  // Send email on fulfillment (delivered)
-  if (status === "delivered") {
+  if (action === "fulfill") {
     try {
       await sendFulfillmentEmail(
         drop.donation.user.email,
@@ -49,4 +51,15 @@ export async function PATCH(
   }
 
   return NextResponse.json(drop);
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
+
+  const drop = await prisma.bibleDrop.delete({ where: { id: params.id } });
+  return NextResponse.json({ deleted: drop.id });
 }
