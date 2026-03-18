@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       cancel_url: `${process.env.NEXTAUTH_URL}/donate`,
       metadata: {
         userId: (session.user as any).id,
+        donorName: session.user?.name || "",
         quantity: qty.toString(),
       },
     });
