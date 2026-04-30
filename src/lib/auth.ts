@@ -20,7 +20,12 @@ export const authOptions: NextAuthOptions = {
           if (!user) return null;
           const valid = await bcrypt.compare(credentials.password, user.passwordHash);
           if (!valid) return null;
-          return { id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin };
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          };
         } catch {
           return null;
         }
@@ -33,14 +38,14 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.isAdmin = (user as any).isAdmin;
+        token.role = (user as { id: string; role?: string }).role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).isAdmin = token.isAdmin;
+        (session.user as { id?: string; role?: string }).id = token.id as string;
+        (session.user as { id?: string; role?: string }).role = token.role as string;
       }
       return session;
     },

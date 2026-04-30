@@ -1,23 +1,28 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { sendFulfillmentEmail } from "@/lib/email";
+import { z } from "zod";
 
-function isAdmin(email: string) {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-  return email === adminEmail;
-}
+export const dynamic = "force-dynamic";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+const fulfillSchema = z.object({
+  trackingNumber: z.string().min(1).max(100).optional(),
+});
+
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
+
+  const body = await req.json().catch(() => ({}));
+  const parsed = fulfillSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { trackingNumber } = parsed.data;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { trackingNumber } = await req.json().catch(() => ({}));
-
     const updated = await prisma.bibleDrop.update({
       where: { id: params.id },
       data: {
@@ -31,17 +36,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       },
     });
 
-    // Send fulfillment notification to donor
     if (updated.donation.user.email) {
       await sendFulfillmentEmail(
         updated.donation.user.email,
         updated.donation.user.name || "Friend",
-        updated.address
+        1,
+        updated.trackingNumber ?? undefined
       );
     }
 
     return NextResponse.json(updated);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

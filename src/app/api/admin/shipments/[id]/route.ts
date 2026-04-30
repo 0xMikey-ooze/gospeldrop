@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { sendFulfillmentEmail } from "@/lib/email";
+import { shipmentPatchSchema } from "@/lib/schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +13,19 @@ export async function PATCH(
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
-  const body = await request.json();
-  const { status, trackingNumber } = body;
-
-  const validStatuses = ["pending", "shipped", "delivered", "failed"];
-  if (status && !validStatuses.includes(status)) {
-    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const parsed = shipmentPatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
+  }
+
+  const { status, trackingNumber } = parsed.data;
 
   const updateData: Record<string, unknown> = {};
   if (status) updateData.status = status;
@@ -34,7 +41,6 @@ export async function PATCH(
     },
   });
 
-  // Send email on fulfillment (delivered)
   if (status === "delivered") {
     try {
       await sendFulfillmentEmail(

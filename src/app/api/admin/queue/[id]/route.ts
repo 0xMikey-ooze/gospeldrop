@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { sendFulfillmentEmail } from "@/lib/email";
+import { queueActionSchema } from "@/lib/schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +13,19 @@ export async function PATCH(
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
-  const body = await request.json();
-  const { action, trackingNumber } = body;
-
-  if (!["fulfill", "skip", "cancel"].includes(action)) {
-    return NextResponse.json({ error: "Invalid action. Use fulfill, skip, or cancel." }, { status: 400 });
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const parsed = queueActionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
+  }
+
+  const { action, trackingNumber } = parsed.data;
 
   const statusMap: Record<string, string> = {
     fulfill: "shipped",
