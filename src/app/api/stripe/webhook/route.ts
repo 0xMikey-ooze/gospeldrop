@@ -57,21 +57,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Invalid checkout session payload" }, { status: 400 });
       }
 
-      const existingDonation = await prisma.donation.findFirst({
+      await prisma.donation.upsert({
         where: { stripeSessionId: donationData.stripeSessionId },
+        update: {},
+        create: {
+          stripeSessionId: donationData.stripeSessionId,
+          userId: donationData.userId,
+          amount: donationData.amount,
+          quantity: donationData.quantity,
+          status: "pending",
+        },
       });
-
-      if (!existingDonation) {
-        await prisma.donation.create({
-          data: {
-            userId: donationData.userId,
-            amount: donationData.amount,
-            quantity: donationData.quantity,
-            stripeSessionId: donationData.stripeSessionId,
-            status: "pending",
-          },
-        });
-      }
     }
 
     return NextResponse.json({ received: true });

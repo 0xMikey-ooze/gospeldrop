@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   constructEventMock,
-  findFirstMock,
-  createMock,
+  upsertMock,
 } = vi.hoisted(() => ({
   constructEventMock: vi.fn(),
-  findFirstMock: vi.fn(),
-  createMock: vi.fn(),
+  upsertMock: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe", () => ({
@@ -21,8 +19,7 @@ vi.mock("@/lib/stripe", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     donation: {
-      findFirst: findFirstMock,
-      create: createMock,
+      upsert: upsertMock,
     },
   },
 }));
@@ -32,8 +29,7 @@ import { POST } from "@/app/api/stripe/webhook/route";
 describe("POST /api/stripe/webhook", () => {
   beforeEach(() => {
     constructEventMock.mockReset();
-    findFirstMock.mockReset();
-    createMock.mockReset();
+    upsertMock.mockReset();
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
   });
 
@@ -51,8 +47,7 @@ describe("POST /api/stripe/webhook", () => {
         },
       },
     });
-    findFirstMock.mockResolvedValue(null);
-    createMock.mockResolvedValue({ id: "donation_123" });
+    upsertMock.mockResolvedValue({ id: "donation_123" });
 
     const response = await POST(
       new Request("http://localhost/api/stripe/webhook", {
@@ -70,21 +65,20 @@ describe("POST /api/stripe/webhook", () => {
       "sig_test",
       "whsec_test"
     );
-    expect(findFirstMock).toHaveBeenCalledWith({
+    expect(upsertMock).toHaveBeenCalledWith({
       where: { stripeSessionId: "cs_test_123" },
-    });
-    expect(createMock).toHaveBeenCalledWith({
-      data: {
+      update: {},
+      create: {
+        stripeSessionId: "cs_test_123",
         userId: "user_123",
         amount: 4500,
         quantity: 3,
-        stripeSessionId: "cs_test_123",
         status: "pending",
       },
     });
   });
 
-  it("does not create a duplicate donation when Stripe retries the webhook", async () => {
+  it("uses an idempotent upsert when Stripe retries the webhook", async () => {
     constructEventMock.mockReturnValue({
       type: "checkout.session.completed",
       data: {
@@ -98,7 +92,7 @@ describe("POST /api/stripe/webhook", () => {
         },
       },
     });
-    findFirstMock.mockResolvedValue({ id: "donation_existing" });
+    upsertMock.mockResolvedValue({ id: "donation_existing" });
 
     const response = await POST(
       new Request("http://localhost/api/stripe/webhook", {
@@ -111,6 +105,6 @@ describe("POST /api/stripe/webhook", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(createMock).not.toHaveBeenCalled();
+    expect(upsertMock).toHaveBeenCalledOnce();
   });
 });

@@ -35,7 +35,8 @@ describe("POST /api/admin/queue/[id]/fulfill", () => {
   it("sends the fulfillment email with bible count and tracking number", async () => {
     getServerSessionMock.mockResolvedValue({
       user: {
-        email: "admin@example.com",
+        email: "staff@example.com",
+        isAdmin: true,
       },
     });
     updateMock.mockResolvedValue({
@@ -69,5 +70,26 @@ describe("POST /api/admin/queue/[id]/fulfill", () => {
       3,
       "TRACK-123"
     );
+  });
+
+  it("rejects sessions that only match the admin email but are not admins", async () => {
+    getServerSessionMock.mockResolvedValue({
+      user: {
+        email: "admin@example.com",
+        isAdmin: false,
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/admin/queue/drop_123/fulfill", {
+        method: "POST",
+        body: JSON.stringify({ trackingNumber: "TRACK-123" }),
+      }),
+      { params: { id: "drop_123" } }
+    );
+
+    expect(response.status).toBe(401);
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(sendFulfillmentEmailMock).not.toHaveBeenCalled();
   });
 });

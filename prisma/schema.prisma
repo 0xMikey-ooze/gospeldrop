@@ -36,7 +36,7 @@ model Donation {
   userId          String
   amount          Int
   quantity        Int
-  stripeSessionId String?
+  stripeSessionId String?     @unique
   status          String      @default("pending")
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
