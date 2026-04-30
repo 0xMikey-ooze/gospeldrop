@@ -1,0 +1,61 @@
+{
+  "status": "done",
+  "summary": "Fixed auth/session admin mismatch, corrected fulfillment email payloads on the live queue path, implemented an idempotent Stripe webhook that records completed donations and enqueues Bible drops, restored build-time checks, and added baseline Prisma migration history.",
+  "filesChanged": [
+    "next.config.mjs",
+    "prisma/schema.prisma",
+    "prisma/migrations/20260430220500_init/migration.sql",
+    "prisma/migrations/migration_lock.toml",
+    "src/lib/auth.ts",
+    "src/app/api/admin/queue/[id]/route.ts",
+    "src/app/api/admin/queue/[id]/fulfill/route.ts",
+    "src/app/api/stripe/webhook/route.ts",
+    "src/__tests__/auth.test.ts",
+    "src/__tests__/email.test.ts",
+    "src/__tests__/fulfill-route.test.ts",
+    "src/__tests__/next-config.test.ts",
+    "src/__tests__/prisma-migrations.test.ts",
+    "src/__tests__/queue-route.test.ts",
+    "src/__tests__/stripe-webhook-route.test.ts"
+  ],
+  "commandsRun": [
+    "apt-get update && apt-get install -y nodejs npm",
+    "npm install",
+    "npm install --include=dev",
+    "npm install -g n && n 22.12.0",
+    "npx prisma generate",
+    "git checkout -b cursor/fix-critical-code-issues-f491",
+    "npx vitest run src/__tests__/auth.test.ts",
+    "npx vitest run src/__tests__/fulfill-route.test.ts",
+    "npx vitest run src/__tests__/stripe-webhook-route.test.ts",
+    "npx vitest run src/__tests__/next-config.test.ts src/__tests__/email.test.ts",
+    "npx vitest run src/__tests__/prisma-migrations.test.ts",
+    "npx vitest run src/__tests__/queue-route.test.ts src/__tests__/stripe-webhook-route.test.ts",
+    "npm test",
+    "npx tsc --noEmit",
+    "npx next build",
+    "npx prisma validate",
+    "npx prisma migrate status --schema prisma/schema.prisma",
+    "git push -u origin cursor/fix-critical-code-issues-f491"
+  ],
+  "testsRun": [
+    "npx vitest run src/__tests__/auth.test.ts",
+    "npx vitest run src/__tests__/fulfill-route.test.ts",
+    "npx vitest run src/__tests__/stripe-webhook-route.test.ts",
+    "npx vitest run src/__tests__/next-config.test.ts src/__tests__/email.test.ts",
+    "npx vitest run src/__tests__/prisma-migrations.test.ts",
+    "npx vitest run src/__tests__/queue-route.test.ts src/__tests__/stripe-webhook-route.test.ts",
+    "npm test",
+    "npx tsc --noEmit",
+    "npx next build",
+    "npx prisma validate",
+    "npx prisma migrate status --schema prisma/schema.prisma"
+  ],
+  "browserEvidence": [],
+  "knownIssues": [
+    "npx prisma migrate status --schema prisma/schema.prisma reports the new baseline migration 20260430220500_init as pending application; deploy must apply or resolve that migration in the target database.",
+    "npm run lint still triggers Next.js first-time ESLint setup because the repo does not yet have a committed ESLint config, but next build now enforces active lint/type validation instead of suppressing it."
+  ],
+  "nextStep": "Apply or baseline-resolve the 20260430220500_init Prisma migration in the deployment environment, then review and merge PR #8.",
+  "blockers": []
+}

@@ -4,15 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendFulfillmentEmail } from "@/lib/email";
 
-function isAdmin(email: string) {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-  return email === adminEmail;
-}
-
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
+    if (!session?.user?.email || !(session.user as { isAdmin?: boolean }).isAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -36,7 +31,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await sendFulfillmentEmail(
         updated.donation.user.email,
         updated.donation.user.name || "Friend",
-        updated.address
+        updated.donation.quantity,
+        updated.trackingNumber ?? undefined
       );
     }
 
