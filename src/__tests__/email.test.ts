@@ -1,16 +1,27 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendFulfillmentEmail } from "@/lib/email";
+import { clearEnvCache } from "@/lib/env";
 import nodemailer from "nodemailer";
 
-jest.mock("nodemailer");
+vi.mock("nodemailer", () => ({
+  default: {
+    createTransport: vi.fn(),
+  },
+}));
 
-const mockSendMail = jest.fn().mockResolvedValue({ messageId: "test-id" });
-const mockCreateTransport = nodemailer.createTransport as jest.Mock;
-mockCreateTransport.mockReturnValue({ sendMail: mockSendMail });
+const mockSendMail = vi.fn().mockResolvedValue({ messageId: "test-id" });
+const mockCreateTransport = vi.mocked(nodemailer.createTransport);
 
 describe("sendFulfillmentEmail", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockCreateTransport.mockReturnValue({ sendMail: mockSendMail });
+    vi.clearAllMocks();
+    process.env.DATABASE_URL = "postgresql://user:password@localhost:5432/gospeldrop";
+    process.env.NEXTAUTH_URL = "https://gospeldrop.example.com";
+    process.env.NEXTAUTH_SECRET = "super-secret-value-with-at-least-thirty-two-chars";
+    process.env.STRIPE_SECRET_KEY = "sk_test_1234567890";
+    process.env.EMAIL_FROM = "hello@gospeldrop.example.com";
+    clearEnvCache();
+    mockCreateTransport.mockReturnValue({ sendMail: mockSendMail } as never);
   });
 
   it("sends an email with correct recipient and subject for single bible", async () => {

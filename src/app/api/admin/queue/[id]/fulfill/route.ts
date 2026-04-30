@@ -1,22 +1,20 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
+import { parseJsonBody, validationErrorResponse } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { sendFulfillmentEmail } from "@/lib/email";
+import { z } from "zod";
 
-function isAdmin(email: string) {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gospeldrop.org";
-  return email === adminEmail;
-}
+const fulfillBodySchema = z.object({
+  trackingNumber: z.string().trim().max(100).optional(),
+});
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
 
-    const { trackingNumber } = await req.json().catch(() => ({}));
+    const { trackingNumber } = await parseJsonBody(req, fulfillBodySchema);
 
     const updated = await prisma.bibleDrop.update({
       where: { id: params.id },
@@ -36,12 +34,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await sendFulfillmentEmail(
         updated.donation.user.email,
         updated.donation.user.name || "Friend",
-        updated.address
+        1,
+        trackingNumber
       );
     }
 
     return NextResponse.json(updated);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const validationError = validationErrorResponse(error);
+    if (validationError) return validationError;
+
+    const message = error instanceof Error ? error.message : "Failed to fulfill shipment";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

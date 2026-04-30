@@ -17,17 +17,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const router = useRouter();
+  const isAdmin = session?.user?.role === "admin";
 
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin");
     }
-  }, [status, router]);
+    if (status === "authenticated" && !isAdmin) {
+      router.push("/");
+    }
+  }, [isAdmin, router, status]);
 
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-text-sub font-semibold">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!session?.user || !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-text-sub font-semibold">Checking admin access...</div>
       </div>
     );
   }
