@@ -36,7 +36,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await sendFulfillmentEmail(
         updated.donation.user.email,
         updated.donation.user.name || "Friend",
-        updated.address
+        updated.donation.quantity,
+        updated.trackingNumber ?? undefined
       );
     }
 
