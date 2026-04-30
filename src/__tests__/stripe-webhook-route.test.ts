@@ -3,9 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   constructEventMock,
   upsertMock,
+  findManyMock,
+  updateManyMock,
+  createManyMock,
 } = vi.hoisted(() => ({
   constructEventMock: vi.fn(),
   upsertMock: vi.fn(),
+  findManyMock: vi.fn(),
+  updateManyMock: vi.fn(),
+  createManyMock: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe", () => ({
@@ -21,6 +27,13 @@ vi.mock("@/lib/prisma", () => ({
     donation: {
       upsert: upsertMock,
     },
+    address: {
+      findMany: findManyMock,
+      updateMany: updateManyMock,
+    },
+    bibleDrop: {
+      createMany: createManyMock,
+    },
   },
 }));
 
@@ -30,6 +43,9 @@ describe("POST /api/stripe/webhook", () => {
   beforeEach(() => {
     constructEventMock.mockReset();
     upsertMock.mockReset();
+    findManyMock.mockReset();
+    updateManyMock.mockReset();
+    createManyMock.mockReset();
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
   });
 
@@ -48,6 +64,13 @@ describe("POST /api/stripe/webhook", () => {
       },
     });
     upsertMock.mockResolvedValue({ id: "donation_123" });
+    findManyMock.mockResolvedValue([
+      { id: "addr_1" },
+      { id: "addr_2" },
+      { id: "addr_3" },
+    ]);
+    updateManyMock.mockResolvedValue({ count: 3 });
+    createManyMock.mockResolvedValue({ count: 3 });
 
     const response = await POST(
       new Request("http://localhost/api/stripe/webhook", {
@@ -67,14 +90,36 @@ describe("POST /api/stripe/webhook", () => {
     );
     expect(upsertMock).toHaveBeenCalledWith({
       where: { stripeSessionId: "cs_test_123" },
-      update: {},
+      update: {
+        amount: 4500,
+        quantity: 3,
+        status: "completed",
+      },
       create: {
         stripeSessionId: "cs_test_123",
         userId: "user_123",
         amount: 4500,
         quantity: 3,
-        status: "pending",
+        status: "completed",
       },
+    });
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: { hasReceived: false },
+      orderBy: { createdAt: "asc" },
+      take: 3,
+      select: { id: true },
+    });
+    expect(createManyMock).toHaveBeenCalledWith({
+      data: [
+        { donationId: "donation_123", addressId: "addr_1", status: "pending" },
+        { donationId: "donation_123", addressId: "addr_2", status: "pending" },
+        { donationId: "donation_123", addressId: "addr_3", status: "pending" },
+      ],
+      skipDuplicates: true,
+    });
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ["addr_1", "addr_2", "addr_3"] } },
+      data: { hasReceived: true },
     });
   });
 
@@ -93,6 +138,7 @@ describe("POST /api/stripe/webhook", () => {
       },
     });
     upsertMock.mockResolvedValue({ id: "donation_existing" });
+    findManyMock.mockResolvedValue([]);
 
     const response = await POST(
       new Request("http://localhost/api/stripe/webhook", {
@@ -106,5 +152,7 @@ describe("POST /api/stripe/webhook", () => {
 
     expect(response.status).toBe(200);
     expect(upsertMock).toHaveBeenCalledOnce();
+    expect(createManyMock).not.toHaveBeenCalled();
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 });

@@ -37,6 +37,39 @@ function parseCompletedCheckoutSession(event: {
   };
 }
 
+async function enqueueBibleDrops(donationId: string, quantity: number) {
+  const addresses = await prisma.address.findMany({
+    where: { hasReceived: false },
+    orderBy: { createdAt: "asc" },
+    take: quantity,
+    select: { id: true },
+  });
+
+  if (addresses.length === 0) {
+    return;
+  }
+
+  await prisma.address.updateMany({
+    where: {
+      id: {
+        in: addresses.map((address) => address.id),
+      },
+    },
+    data: {
+      hasReceived: true,
+    },
+  });
+
+  await prisma.bibleDrop.createMany({
+    data: addresses.map((address) => ({
+      donationId,
+      addressId: address.id,
+      status: "pending",
+    })),
+    skipDuplicates: true,
+  });
+}
+
 export async function POST(request: Request) {
   const webhookSecret = getWebhookSecret();
   const signature = request.headers.get("stripe-signature");
@@ -57,17 +90,23 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Invalid checkout session payload" }, { status: 400 });
       }
 
-      await prisma.donation.upsert({
+      const donation = await prisma.donation.upsert({
         where: { stripeSessionId: donationData.stripeSessionId },
-        update: {},
+        update: {
+          amount: donationData.amount,
+          quantity: donationData.quantity,
+          status: "completed",
+        },
         create: {
           stripeSessionId: donationData.stripeSessionId,
           userId: donationData.userId,
           amount: donationData.amount,
           quantity: donationData.quantity,
-          status: "pending",
+          status: "completed",
         },
       });
+
+      await enqueueBibleDrops(donation.id, donationData.quantity);
     }
 
     return NextResponse.json({ received: true });

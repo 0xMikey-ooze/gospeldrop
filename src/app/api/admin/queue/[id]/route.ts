@@ -42,7 +42,7 @@ export async function PATCH(
       await sendFulfillmentEmail(
         drop.donation.user.email,
         drop.donation.user.name || "Friend",
-        1,
+        drop.donation.quantity,
         drop.trackingNumber ?? undefined
       );
     } catch (err) {
