@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 interface Shipment {
@@ -48,19 +48,30 @@ export default function ShipmentsPage() {
   const statusFilter = searchParams.get("status") || "";
   const page = parseInt(searchParams.get("page") || "1");
 
-  const fetchShipments = useCallback(() => {
-    setLoading(true);
+  const fetchShipments = () => {
     const params = new URLSearchParams({ sortBy, sortDir, page: String(page) });
     if (statusFilter) params.set("status", statusFilter);
     fetch(`/api/admin/shipments?${params}`)
       .then((r) => r.json())
       .then((d) => { setShipments(d.shipments || []); setTotal(d.total || 0); })
       .finally(() => setLoading(false));
-  }, [sortBy, sortDir, statusFilter, page]);
+  };
 
-  useEffect(() => { fetchShipments(); }, [fetchShipments]);
+  useEffect(() => {
+    const params = new URLSearchParams({ sortBy, sortDir, page: String(page) });
+    if (statusFilter) params.set("status", statusFilter);
+
+    void fetch(`/api/admin/shipments?${params}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setShipments(d.shipments || []);
+        setTotal(d.total || 0);
+      })
+      .finally(() => setLoading(false));
+  }, [page, sortBy, sortDir, statusFilter]);
 
   const setSort = (col: string) => {
+    setLoading(true);
     const newDir = sortBy === col && sortDir === "desc" ? "asc" : "desc";
     const p = new URLSearchParams(searchParams.toString());
     p.set("sortBy", col);
@@ -70,6 +81,7 @@ export default function ShipmentsPage() {
   };
 
   const setStatus = (s: string) => {
+    setLoading(true);
     const p = new URLSearchParams(searchParams.toString());
     if (s) p.set("status", s); else p.delete("status");
     p.set("page", "1");
@@ -77,6 +89,7 @@ export default function ShipmentsPage() {
   };
 
   const updateStatus = async (id: string, status: string, trackingNumber?: string) => {
+    setLoading(true);
     await fetch(`/api/admin/shipments/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -198,6 +211,7 @@ export default function ShipmentsPage() {
             <button
               key={p}
               onClick={() => {
+                setLoading(true);
                 const params = new URLSearchParams(searchParams.toString());
                 params.set("page", String(p));
                 router.push(`/admin/shipments?${params}`);

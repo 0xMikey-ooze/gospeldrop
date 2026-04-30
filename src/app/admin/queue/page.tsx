@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 
 interface QueueItem {
   id: string;
@@ -33,8 +33,6 @@ export default function QueuePage() {
       .then((d) => { setQueue(d.queue || []); setTotal(d.total || 0); })
       .finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => { fetchQueue(); }, [fetchQueue]);
 
   const handleAction = async (id: string, action: "fulfill" | "skip" | "cancel") => {
     setProcessing(id);

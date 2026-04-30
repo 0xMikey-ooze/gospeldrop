@@ -1,14 +1,17 @@
 import nodemailer from "nodemailer";
+import { getEnv } from "./env";
 
 function createTransport() {
-  if (process.env.SMTP_HOST) {
+  const env = getEnv();
+
+  if (env.SMTP_HOST) {
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true",
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: env.SMTP_USER,
+        pass: env.SMTP_PASS,
       },
     });
   }
@@ -23,7 +26,7 @@ export async function sendFulfillmentEmail(
   trackingNumber?: string
 ) {
   const transport = createTransport();
-  const from = process.env.EMAIL_FROM || "noreply@gospeldrop.org";
+  const from = getEnv().EMAIL_FROM;
 
   const text = `Dear ${toName},
 

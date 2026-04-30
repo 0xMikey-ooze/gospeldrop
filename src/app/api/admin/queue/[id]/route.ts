@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
+import { parseJsonBody, validationErrorResponse } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { sendFulfillmentEmail } from "@/lib/email";
+import { adminQueueActionSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -12,45 +14,47 @@ export async function PATCH(
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
-  const body = await request.json();
-  const { action, trackingNumber } = body;
+  try {
+    const { action, trackingNumber } = await parseJsonBody(request, adminQueueActionSchema);
 
-  if (!["fulfill", "skip", "cancel"].includes(action)) {
-    return NextResponse.json({ error: "Invalid action. Use fulfill, skip, or cancel." }, { status: 400 });
-  }
+    const statusMap: Record<"fulfill" | "skip" | "cancel", "shipped" | "pending" | "failed"> = {
+      fulfill: "shipped",
+      skip: "pending",
+      cancel: "failed",
+    };
 
-  const statusMap: Record<string, string> = {
-    fulfill: "shipped",
-    skip: "pending",
-    cancel: "failed",
-  };
+    const updateData: Record<string, unknown> = { status: statusMap[action] };
+    if (trackingNumber) updateData.trackingNumber = trackingNumber;
+    if (action === "fulfill") updateData.shippedAt = new Date();
 
-  const updateData: Record<string, unknown> = { status: statusMap[action] };
-  if (trackingNumber) updateData.trackingNumber = trackingNumber;
-  if (action === "fulfill") updateData.shippedAt = new Date();
+    const drop = await prisma.bibleDrop.update({
+      where: { id: params.id },
+      data: updateData,
+      include: {
+        donation: { include: { user: { select: { email: true, name: true } } } },
+      },
+    });
 
-  const drop = await prisma.bibleDrop.update({
-    where: { id: params.id },
-    data: updateData,
-    include: {
-      donation: { include: { user: { select: { email: true, name: true } } } },
-    },
-  });
-
-  if (action === "fulfill") {
-    try {
-      await sendFulfillmentEmail(
-        drop.donation.user.email,
-        drop.donation.user.name || "Friend",
-        1,
-        drop.trackingNumber ?? undefined
-      );
-    } catch (err) {
-      console.error("Email send failed:", err);
+    if (action === "fulfill") {
+      try {
+        await sendFulfillmentEmail(
+          drop.donation.user.email,
+          drop.donation.user.name || "Friend",
+          1,
+          drop.trackingNumber ?? undefined
+        );
+      } catch (err) {
+        console.error("Email send failed:", err);
+      }
     }
-  }
 
-  return NextResponse.json(drop);
+    return NextResponse.json(drop);
+  } catch (error) {
+    const validationError = validationErrorResponse(error);
+    if (validationError) return validationError;
+
+    throw error;
+  }
 }
 
 export async function DELETE(
